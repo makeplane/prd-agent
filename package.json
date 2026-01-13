@@ -1,0 +1,28 @@
+{
+  "name": "weather-bot",
+  "description": "Weather bot that interacts with Plane",
+  "version": "0.0.1",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy --minify",
+    "cf-typegen": "wrangler types --env-interface CloudflareBindings",
+    "lint": "eslint src --ext .ts",
+    "lint:fix": "eslint src --ext .ts --fix",
+    "prepare": "husky"
+  },
+  "dependencies": {
+    "@makeplane/plane-node-sdk": "^0.2.5",
+    "@types/node": "^24.0.14",
+    "openai": "4.85.4",
+    "wrangler": "4.25.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.0.0",
+    "@typescript-eslint/eslint-plugin": "^8.32.1",
+    "@typescript-eslint/parser": "^8.32.1",
+    "eslint": "^9.26.0",
+    "eslint-config-prettier": "^10.1.5",
+    "husky": "^9.1.7",
+    "wrangler": "^4.25.0"
+  }
+}
