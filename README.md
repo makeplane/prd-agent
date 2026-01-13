@@ -1,29 +1,33 @@
-# Weather Bot for Plane
+# PRD Agent for Plane
 
-A Cloudflare Worker-based weather assistant that integrates with Plane. Users can mention the bot in work item comments to get weather information for any city.
+A Cloudflare Worker-based PRD (Product Requirements Document) generator that integrates with Plane. Users can mention the bot in issue comments to automatically generate comprehensive PRDs and create linked pages.
 
 ## Features
 
-- 🌤️ Get current weather for any city
-- 🕐 Get current time for any location
-- 🗺️ Automatic geocoding of city names
+- 📄 Automatic PRD generation from Plane issues
+- 🤖 AI-powered PRD creation using OpenAI
+- 🔗 Automatic page creation with PRD content
+- 🔗 Automatic linking of PRD pages to issues
+- 🎨 HTML-formatted PRDs for better readability
 - 🔄 Multi-step reasoning using OpenAI
 - 🔐 OAuth integration with Plane
 
 ## Architecture
 
 The bot uses a simple agentic loop:
-1. Receives webhook events when users mention the bot
-2. Uses OpenAI to understand the request and plan actions
-3. Executes tools (get coordinates, weather, time)
-4. Creates agent activities in Plane to show progress
-5. Responds with the final result
+1. Receives webhook events when users mention the bot in an issue comment
+2. Retrieves issue details (title and description)
+3. Generates a comprehensive PRD using OpenAI
+4. Creates a new page in Plane with the PRD content
+5. Links the page to the original issue
+6. Responds with a success message and page link
 
 ## Available Tools
 
-- `getCoordinates(city_name)` - Get latitude/longitude for a city
-- `getWeather(lat, long)` - Get current weather conditions
-- `getTime(lat, long)` - Get current local time
+- `getIssueDetails()` - Get the title and description of the current issue from Plane
+- `createPRD()` - Generate a comprehensive PRD using OpenAI based on the issue details
+- `createPage()` - Create a new page in Plane with the PRD content as description
+- `attachPageToIssue()` - Attach the page link to the issue (automatically stops the flow)
 
 ## Setup
 
@@ -37,7 +41,7 @@ The bot uses a simple agentic loop:
 ### 1. Clone and Install
 
 ```bash
-cd weather-agent
+cd chat-prd-agent
 npm install
 ```
 
@@ -54,7 +58,7 @@ Update `wrangler.jsonc` with the KV namespace ID.
 1. Go to your Plane workspace settings
 2. Navigate to **Apps** > **Create App**
 3. Set the following:
-   - **App Name**: Weather Bot
+   - **App Name**: PRD Agent
    - **Redirect URL**: `https://your-worker-url/oauth/callback`
    - **Webhook URL**: `https://your-worker-url/webhook`
    - Enable the `agent_run_user_prompt` webhook event
@@ -69,6 +73,7 @@ Update `wrangler.jsonc`:
   "vars": {
     "PLANE_CLIENT_ID": "your-client-id",
     "PLANE_BASE_URL": "https://api.plane.so",
+    "PLANE_BASE_APP_URL": "https://app.plane.so",
     "SERVER_URL": "https://your-worker-url"
   }
 }
@@ -95,24 +100,39 @@ npm run deploy
 
 ## Usage
 
-Mention the bot in any work item comment:
+Mention the bot in any issue comment:
 
 ```
-@WeatherBot What's the weather in Tokyo?
+@PRDAgent create a PRD for this issue
 ```
 
-The bot will:
-1. Acknowledge the request with a "thinking" activity
-2. Look up coordinates for Tokyo
-3. Fetch current weather data
-4. Respond with the weather information
+Or simply mention the bot:
 
-### Example Interactions
+```
+@PRDAgent
+```
 
-- "What's the weather in New York?"
-- "How about Paris?"
-- "What time is it in London?"
-- "Get me the weather and time for Sydney"
+The bot will automatically:
+1. Retrieve the issue details (title and description)
+2. Generate a comprehensive PRD using OpenAI
+3. Create a new page in Plane with the PRD content
+4. Link the page to the issue
+5. Respond with a success message and page link
+
+### PRD Structure
+
+The generated PRD includes:
+- **Overview** - A brief summary of the feature/requirement
+- **Goals and Objectives** - What we aim to achieve
+- **User Stories** - Who will use this and how
+- **Functional Requirements** - Detailed features and functionality
+- **Non-Functional Requirements** - Performance, security, scalability considerations
+- **Acceptance Criteria** - Clear criteria for completion
+- **Out of Scope** - What is explicitly not included
+- **Dependencies** - Any dependencies or prerequisites
+- **Timeline Considerations** - Any time-sensitive aspects
+
+PRDs are formatted in HTML for better readability in Plane pages.
 
 ## Environment Variables
 
@@ -120,7 +140,8 @@ The bot will:
 |----------|-------------|----------|
 | `PLANE_CLIENT_ID` | Plane OAuth Client ID | Yes |
 | `PLANE_CLIENT_SECRET` | Plane OAuth Client Secret | Yes |
-| `PLANE_BASE_URL` | Plane API URL (default: https://api.plane.so) | No |
+| `PLANE_BASE_URL` | Plane API URL (default: https://api.plane.so) | Yes |
+| `PLANE_BASE_APP_URL` | Plane App URL (default: https://app.plane.so) | Yes |
 | `SERVER_URL` | This worker's public URL | Yes |
 | `OPENAI_API_KEY` | OpenAI API key for GPT-4 | Yes |
 
@@ -154,7 +175,7 @@ npm run deploy
 ## Project Structure
 
 ```
-weather-agent/
+chat-prd-agent/
 ├── src/
 │   ├── index.ts              # Main entry point and routing
 │   └── lib/
@@ -166,7 +187,7 @@ weather-agent/
 │       └── agent/
 │           ├── agentClient.ts # Agent logic and Plane API
 │           ├── prompt.ts      # LLM system prompt
-│           └── tools.ts       # Weather/time/geo tools
+│           └── tools.ts        # PRD generation and page tools
 ├── wrangler.jsonc            # Cloudflare configuration
 ├── package.json
 ├── tsconfig.json
@@ -175,23 +196,34 @@ weather-agent/
 
 ## Webhook Events
 
-The bot listens for `agent_run_user_prompt` events, which are triggered when a user mentions the bot in a work item comment. The webhook payload includes:
+The bot listens for `agent_run_user_prompt` events, which are triggered when a user mentions the bot in an issue comment. The webhook payload includes:
 
 - `agent_run` - The agent run context
 - `agent_run_activity` - The user's prompt activity
 - `workspace_id` - The workspace identifier
 - `project_id` - The project identifier
-- `issue_id` - The work item identifier
+- `issue_id` - The issue identifier
 
 ## Agent Activity Types
 
 The bot creates various activity types in Plane:
 
 - `thought` - Shows the bot's reasoning process
-- `action` - Indicates tool execution
-- `response` - Final answer to the user
+- `action` - Indicates tool execution with parameters
+- `response` - Final answer to the user with page link
 - `elicitation` - Request for more information
 - `error` - Error messages
+
+## Workflow
+
+When the bot is mentioned in an issue comment, it follows this workflow:
+
+1. **getIssueDetails()** - Retrieves the issue title and description
+2. **createPRD()** - Generates a comprehensive PRD using OpenAI based on the issue
+3. **createPage()** - Creates a new page in Plane with the PRD content (HTML formatted)
+4. **attachPageToIssue()** - Links the page to the issue and stops the flow
+
+All intermediate results are stored internally, so tools don't require parameters. The bot automatically uses stored context between steps.
 
 ## License
 
