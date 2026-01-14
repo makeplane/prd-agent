@@ -1,7 +1,4 @@
-import {
-  getOAuthConfig,
-  createOAuthApi,
-} from "./lib/helpers";
+import { getOAuthConfig, createOAuthApi } from "./lib/helpers";
 import {
   saveCredentials,
   getCredentialsForWorkspace,
@@ -31,7 +28,7 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
     if (path === "/oauth/setup" && method === "GET") {
       const config = getOAuthConfig(env);
       const oauthApi = createOAuthApi(config);
-      const consentUrl = oauthApi.getAuthorizationUrl('code', 'oauth_setup');
+      const consentUrl = oauthApi.getAuthorizationUrl("code", "oauth_setup");
       return Response.redirect(consentUrl, 302);
     }
 
@@ -51,12 +48,15 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
       const tokenResponse = await oauthApi.getBotToken(appInstallationId);
 
       // Get app installation details
-      const appInstallations = await oauthApi.getAppInstallations(tokenResponse.access_token, appInstallationId);
+      const appInstallations = await oauthApi.getAppInstallations(
+        tokenResponse.access_token,
+        appInstallationId,
+      );
 
       if (!appInstallations.length) {
         return new Response(
           `No app installations found for app installation ID ${appInstallationId}`,
-          { status: 404 }
+          { status: 404 },
         );
       }
 
@@ -104,21 +104,6 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
         type: webhook.data?.type,
       });
 
-      // Handle agent_run_user_prompt event directly
-      // The webhook payload structure from activity_webhook.py:
-      // {
-      //   "action": "prompted",
-      //   "agent_run_activity": activity.to_dict(),
-      //   "agent_run": activity.agent_run.to_dict(),
-      //   "agent_user_id": ...,
-      //   "app_client_id": ...,
-      //   "comment_id": ...,
-      //   "issue_id": ...,
-      //   "project_id": ...,
-      //   "workspace_id": ...,
-      //   "type": "agent_run_activity"
-      // }
-
       // Check if this is an agent_run_user_prompt webhook
       const webhookData = webhook.data as unknown as AgentRunUserPromptWebhook;
 
@@ -126,7 +111,7 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
         console.log("Not an agent_run_activity webhook, skipping");
         return new Response(
           JSON.stringify({ message: "Webhook type not handled" }),
-          { headers: { "Content-Type": "application/json" } }
+          { headers: { "Content-Type": "application/json" } },
         );
       }
 
@@ -143,7 +128,7 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
       if (!storedCreds) {
         return new Response(
           `No credentials found for workspace ${workspaceId}`,
-          { status: 404 }
+          { status: 404 },
         );
       }
 
@@ -154,7 +139,7 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
         webhookData,
         storedCreds,
         config,
-        env
+        env,
       );
 
       return new Response(
@@ -163,7 +148,7 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
         }),
         {
           headers: { "Content-Type": "application/json" },
-        }
+        },
       );
     }
 
@@ -176,7 +161,7 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
         }),
         {
           headers: { "Content-Type": "application/json" },
-        }
+        },
       );
     }
 
@@ -190,7 +175,7 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
         }),
         {
           headers: { "Content-Type": "application/json" },
-        }
+        },
       );
     }
 
@@ -206,7 +191,7 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
       {
         status: 500,
         headers: { "Content-Type": "application/json" },
-      }
+      },
     );
   }
 }
@@ -215,7 +200,7 @@ export default {
   async fetch(
     request: Request,
     env: Env,
-    ctx: ExecutionContext
+    ctx: ExecutionContext,
   ): Promise<Response> {
     return handleRequest(request, env);
   },

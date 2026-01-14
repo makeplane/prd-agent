@@ -11,7 +11,7 @@ export class UnreachableCaseError extends Error {
 /**
  * The name of a tool that can be executed by the agent
  */
-export type ToolName = "getIssueDetails" | "createPRD" | "createPage" | "attachPageToIssue";
+export type ToolName = "getIssueDetails" | "createPRDAndPage" | "attachPageToIssue";
 
 /**
  * Check if a string is a valid tool name
@@ -20,9 +20,8 @@ export type ToolName = "getIssueDetails" | "createPRD" | "createPage" | "attachP
  */
 export const isToolName = (value: string): value is ToolName => {
   return (
-    value === "getIssueDetails" || 
-    value === "createPRD" || 
-    value === "createPage" || 
+    value === "getIssueDetails" ||
+    value === "createPRDAndPage" ||
     value === "attachPageToIssue"
   );
 };
@@ -123,6 +122,7 @@ export interface OAuthConfig {
   PLANE_CLIENT_ID: string;
   PLANE_CLIENT_SECRET: string;
   PLANE_BASE_URL: string;
+  PLANE_BASE_APP_URL: string;
   SERVER_URL: string;
   PLANE_REDIRECT_URI: string;
 }

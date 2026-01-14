@@ -1,7 +1,14 @@
 import OpenAI from "openai";
 import type { ChatCompletionMessageParam } from "openai/resources/index";
-import { PlaneClient, CreateAgentRunActivityRequest } from "@makeplane/plane-node-sdk";
-import { getIssueDetails, createPRD, createPage, attachPageToIssue } from "./tools";
+import {
+  PlaneClient,
+  CreateAgentRunActivityRequest,
+} from "@makeplane/plane-node-sdk";
+import {
+  getIssueDetails,
+  createPRDAndPage,
+  attachPageToIssue,
+} from "./tools";
 import { prompt } from "./prompt";
 import { isToolName, ToolName, UnreachableCaseError } from "../types";
 
@@ -23,23 +30,30 @@ type Content =
 export class AgentClient {
   private planeClient: PlaneClient;
   private openai: OpenAI;
+  private planeBaseAppUrl: string;
   private workspaceSlug?: string;
   private projectId?: string;
   private issueId?: string;
-  
+
   // Store intermediate results to avoid parameter parsing issues
   private issueDetails?: { title: string; description: string };
-  private prdContent?: string;
   private pageInfo?: { pageId: string; pageUrl: string; pageName: string };
+  private additionalContext?: string; // User's responses to elicitation questions
 
   // Maximum number of iterations for the agent to prevent infinite loops
   private MAX_ITERATIONS = 10;
 
-  constructor(accessToken: string, planeBaseUrl: string, openaiApiKey: string) {
+  constructor(
+    accessToken: string,
+    planeBaseUrl: string,
+    planeBaseAppUrl: string,
+    openaiApiKey: string,
+  ) {
     this.planeClient = new PlaneClient({
       baseUrl: planeBaseUrl,
       accessToken: accessToken,
     });
+    this.planeBaseAppUrl = planeBaseAppUrl;
     this.openai = new OpenAI({
       apiKey: openaiApiKey,
     });
@@ -58,7 +72,7 @@ export class AgentClient {
     workspaceSlug: string,
     userPrompt: string,
     projectId?: string,
-    issueId?: string
+    issueId?: string,
   ) {
     // Store context for tools
     this.workspaceSlug = workspaceSlug;
@@ -67,8 +81,20 @@ export class AgentClient {
     // Generate more context for the LLM from previous activities in this agent run
     const activities = await this.generateMessagesFromPreviousActivities(
       agentRunId,
-      workspaceSlug
+      workspaceSlug,
     );
+
+    // Extract user responses from activities as additional context for PRD generation
+    const userResponses = activities
+      .filter((a) => a.role === "user")
+      .map((a) => a.content)
+      .filter(Boolean);
+    if (userPrompt) {
+      userResponses.push(userPrompt);
+    }
+    if (userResponses.length > 0) {
+      this.additionalContext = userResponses.join("\n\n");
+    }
 
     const messages = [
       { role: "system", content: prompt },
@@ -150,30 +176,8 @@ export class AgentClient {
             project: projectId,
           });
 
-          // If attachPageToIssue was executed, stop the flow and send a final response
-          if (toolName === "attachPageToIssue") {
-            console.log("attachPageToIssue completed, stopping flow");
-            
-            // Use stored page info for the response
-            let responseMessage = "✅ PRD has been successfully created and linked to the issue!";
-            if (this.pageInfo) {
-              responseMessage = `✅ PRD has been successfully created and linked to the issue! 📄`;
-            }
-
-            await this.createAgentActivity(agentRunId, workspaceSlug, {
-              type: "response",
-              content: { type: "response", body: responseMessage },
-              signal: "continue",
-              project: projectId,
-            });
-            
-            // CRITICAL: Stop the loop immediately
-            taskComplete = true;
-            console.log("Flow stopped after attachPageToIssue");
-          } else {
-            // Continue the loop for next cycle
-            await new Promise((resolve) => setTimeout(resolve, 1000));
-          }
+          // Continue the loop - let the LLM send a RESPONSE after the action
+          await new Promise((resolve) => setTimeout(resolve, 1000));
         } else if (content.type === "response") {
           await this.createAgentActivity(agentRunId, workspaceSlug, {
             type: "response",
@@ -230,7 +234,7 @@ export class AgentClient {
   private async createAgentActivity(
     agentRunId: string,
     workspaceSlug: string,
-    data: CreateAgentRunActivityRequest
+    data: CreateAgentRunActivityRequest,
   ): Promise<void> {
     console.log("Creating agent activity:", {
       runId: agentRunId,
@@ -241,7 +245,7 @@ export class AgentClient {
     await this.planeClient.agentRuns.activities.create(
       workspaceSlug,
       agentRunId,
-      data
+      data,
     );
 
     console.log("Agent activity created successfully");
@@ -263,7 +267,7 @@ export class AgentClient {
     } as const;
 
     const mappedType = Object.entries(typeToKeyword).find(([_, keyword]) =>
-      response.startsWith(keyword)
+      response.startsWith(keyword),
     );
     const type = mappedType?.[0]
       ? (mappedType[0] as keyof typeof typeToKeyword)
@@ -307,29 +311,14 @@ export class AgentClient {
         return {
           issue_id: this.issueId || "not provided",
         };
-      case "createPRD":
+      case "createPRDAndPage":
         if (this.issueDetails) {
           return {
             issue_title: this.issueDetails.title,
-            issue_description: this.issueDetails.description 
-              ? (this.issueDetails.description.length > 100 
-                  ? this.issueDetails.description.substring(0, 100) + "..." 
-                  : this.issueDetails.description)
-              : "none",
+            page_name: `PRD: ${this.issueDetails.title}`,
           };
         }
         return { status: "waiting for issue details" };
-      case "createPage":
-        if (this.issueDetails && this.prdContent) {
-          return {
-            page_name: `PRD: ${this.issueDetails.title}`,
-            prd_length: `${this.prdContent.length} characters`,
-            prd_preview: this.prdContent.length > 200 
-              ? this.prdContent.substring(0, 200) + "..." 
-              : this.prdContent,
-          };
-        }
-        return { status: "waiting for PRD content" };
       case "attachPageToIssue":
         if (this.pageInfo) {
           return {
@@ -353,38 +342,43 @@ export class AgentClient {
     const params: string[] = [];
     let current = "";
     let inQuotes = false;
-    let quoteChar = '';
+    let quoteChar = "";
 
     for (let i = 0; i < paramString.length; i++) {
       const char = paramString[i];
-      
-      if ((char === '"' || char === "'") && (i === 0 || paramString[i - 1] !== '\\')) {
+
+      if (
+        (char === '"' || char === "'") &&
+        (i === 0 || paramString[i - 1] !== "\\")
+      ) {
         if (!inQuotes) {
           inQuotes = true;
           quoteChar = char;
         } else if (char === quoteChar) {
           inQuotes = false;
-          quoteChar = '';
+          quoteChar = "";
         } else {
           current += char;
         }
-      } else if (char === ',' && !inQuotes) {
+      } else if (char === "," && !inQuotes) {
         params.push(current.trim());
         current = "";
       } else {
         current += char;
       }
     }
-    
+
     if (current.trim()) {
       params.push(current.trim());
     }
-    
+
     // Remove surrounding quotes from each parameter
-    return params.map(p => {
+    return params.map((p) => {
       const trimmed = p.trim();
-      if ((trimmed.startsWith('"') && trimmed.endsWith('"')) ||
-          (trimmed.startsWith("'") && trimmed.endsWith("'"))) {
+      if (
+        (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
+        (trimmed.startsWith("'") && trimmed.endsWith("'"))
+      ) {
         return trimmed.slice(1, -1);
       }
       return trimmed;
@@ -404,10 +398,10 @@ export class AgentClient {
     issueId?: string;
   }): Promise<string> {
     const { action, parameter, workspaceSlug, projectId, issueId } = props;
-    
+
     // Tools now work with stored state, so parameter is often not needed
     // But we still accept it for backward compatibility
-    
+
     switch (action) {
       case "getIssueDetails": {
         if (!issueId) {
@@ -416,75 +410,73 @@ export class AgentClient {
         if (!projectId) {
           throw new Error("Project ID is required for getIssueDetails");
         }
-        
+
         console.log("Getting issue details for:", issueId);
-        const result = await getIssueDetails(this.planeClient, workspaceSlug, projectId, issueId);
-        
-        // Store the result for later use
-        if (!("error" in result)) {
-          this.issueDetails = result;
-          console.log("Issue details stored:", { title: result.title, descriptionLength: result.description.length });
-        }
-        
-        return JSON.stringify(result);
-      }
-      case "createPRD": {
-        // Use stored issue details - no parameters needed
-        if (!this.issueDetails) {
-          throw new Error("Issue details are required for createPRD. Call getIssueDetails() first.");
-        }
-        
-        console.log("Creating PRD for issue:", this.issueDetails.title);
-        const prd = await createPRD(this.openai, this.issueDetails.title, this.issueDetails.description || undefined);
-        
-        // Store the PRD content
-        this.prdContent = prd;
-        console.log("PRD created and stored, length:", prd.length);
-        
-        return `PRD created successfully. Length: ${prd.length} characters.`;
-      }
-      case "createPage": {
-        if (!projectId) {
-          throw new Error("Project ID is required for createPage");
-        }
-        if (!this.prdContent) {
-          throw new Error("PRD content is required. Call createPRD() first.");
-        }
-        
-        // Use stored PRD content and generate page name from issue title
-        const pageName = this.issueDetails 
-          ? `PRD: ${this.issueDetails.title}`
-          : "PRD";
-        
-        console.log("Creating page with name:", pageName, "PRD length:", this.prdContent.length);
-        const result = await createPage(
+        const result = await getIssueDetails(
           this.planeClient,
           workspaceSlug,
           projectId,
-          pageName,
-          this.prdContent
+          issueId,
         );
-        
+
+        // Store the result for later use
+        if (!("error" in result)) {
+          this.issueDetails = result;
+          console.log("Issue details stored:", {
+            title: result.title,
+            descriptionLength: result.description.length,
+          });
+        }
+
+        return JSON.stringify(result);
+      }
+      case "createPRDAndPage": {
+        if (!projectId) {
+          throw new Error("Project ID is required for createPRDAndPage");
+        }
+        if (!this.issueDetails) {
+          throw new Error(
+            "Issue details are required. Call getIssueDetails() first.",
+          );
+        }
+
+        console.log("Creating PRD and page for issue:", this.issueDetails.title);
+        const result = await createPRDAndPage(
+          this.openai,
+          this.planeClient,
+          workspaceSlug,
+          projectId,
+          this.issueDetails.title,
+          this.issueDetails.description || undefined,
+          this.planeBaseAppUrl,
+          this.additionalContext,
+        );
+
         // Store page info for later use
         if (!("error" in result)) {
           this.pageInfo = {
             pageId: result.pageId,
             pageUrl: result.pageUrl,
-            pageName: pageName,
+            pageName: result.pageName,
           };
-          console.log("Page created:", result.pageUrl);
+          console.log("PRD and page created:", result.pageUrl);
+          return `PRD created and page published. Page URL: ${result.pageUrl}`;
         }
-        
+
         return JSON.stringify(result);
       }
       case "attachPageToIssue": {
         if (!projectId || !issueId) {
-          throw new Error("Project ID and Issue ID are required for attachPageToIssue");
+          throw new Error(
+            "Project ID and Issue ID are required for attachPageToIssue",
+          );
         }
         if (!this.pageInfo) {
-          throw new Error("Page info is required. Call createPage() first.");
+          throw new Error(
+            "Page info is required. Call createPRDAndPage() first.",
+          );
         }
-        
+
         console.log("Attaching page to issue:", this.pageInfo.pageUrl);
         const result = await attachPageToIssue(
           this.planeClient,
@@ -492,7 +484,7 @@ export class AgentClient {
           projectId,
           issueId,
           this.pageInfo.pageUrl,
-          this.pageInfo.pageName
+          this.pageInfo.pageName,
         );
         console.log("Page attached, stopping flow");
         return result;
@@ -508,7 +500,7 @@ export class AgentClient {
    * @returns The response from the OpenAI API
    */
   private async callOpenAI(
-    messages: ChatCompletionMessageParam[]
+    messages: ChatCompletionMessageParam[],
   ): Promise<string> {
     try {
       const response = await this.openai.chat.completions.create({
@@ -521,7 +513,7 @@ export class AgentClient {
       throw new Error(
         `OpenAI API error: ${
           error instanceof Error ? error.message : "Unknown error"
-        }`
+        }`,
       );
     }
   }
@@ -536,18 +528,18 @@ export class AgentClient {
    */
   private async generateMessagesFromPreviousActivities(
     agentRunId: string,
-    workspaceSlug: string
+    workspaceSlug: string,
   ): Promise<ChatCompletionMessageParam[]> {
     try {
       const response = await this.planeClient.agentRuns.activities.list(
         workspaceSlug,
-        agentRunId
+        agentRunId,
       );
 
       const chatMessages: ChatCompletionMessageParam[] = [];
 
       const filteredActivities = response.results.filter(
-        (a: { type: string }) => a.type === "prompt" || a.type === "response"
+        (a: { type: string }) => a.type === "prompt" || a.type === "response",
       );
 
       for (const activity of filteredActivities.reverse()) {

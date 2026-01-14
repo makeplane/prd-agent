@@ -1,5 +1,5 @@
 {
-  "name": "weather-bot",
+  "name": "prd-agent",
   "description": "Weather bot that interacts with Plane",
   "version": "0.0.1",
   "scripts": {

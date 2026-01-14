@@ -12,11 +12,15 @@ export const getIssueDetails = async (
   planeClient: PlaneClient,
   workspaceSlug: string,
   projectId: string,
-  issueId: string
+  issueId: string,
 ): Promise<{ title: string; description: string } | { error: string }> => {
   try {
-    const response = await planeClient.workItems.retrieve(workspaceSlug, projectId, issueId);
-    
+    const response = await planeClient.workItems.retrieve(
+      workspaceSlug,
+      projectId,
+      issueId,
+    );
+
     if (response && response.name) {
       return {
         title: response.name,
@@ -35,44 +39,40 @@ export const getIssueDetails = async (
 };
 
 /**
- * Create a PRD using OpenAI based on issue title and description
+ * Generate a PRD and create a page in Plane in one step
  * @param openai - The OpenAI client instance
+ * @param planeClient - The Plane client instance
+ * @param workspaceSlug - The workspace slug
+ * @param projectId - The project ID
  * @param issueTitle - The issue title
  * @param issueDescription - The issue description (optional)
- * @returns The generated PRD
+ * @param appBaseUrl - The base URL for the Plane app
+ * @param additionalContext - Additional context from user responses (optional)
+ * @returns The created page with its URL and PRD content
  */
-export const createPRD = async (
+export const createPRDAndPage = async (
   openai: OpenAI,
+  planeClient: PlaneClient,
+  workspaceSlug: string,
+  projectId: string,
   issueTitle: string,
-  issueDescription?: string
-): Promise<string> => {
+  issueDescription?: string,
+  appBaseUrl?: string,
+  additionalContext?: string,
+): Promise<
+  { pageId: string; pageUrl: string; pageName: string } | { error: string }
+> => {
   try {
-    const prompt = `You are a product manager tasked with creating a comprehensive Product Requirements Document (PRD) based on the following issue:
-
+    // Step 1: Generate PRD
+    const prompt = `Create a short PRD for:
 Title: ${issueTitle}
 ${issueDescription ? `Description: ${issueDescription}` : ""}
+${additionalContext ? `Additional Context from user:\n${additionalContext}` : ""}
 
-Please create a detailed PRD that includes:
-1. Overview - A brief summary of the feature/requirement
-2. Goals and Objectives - What we aim to achieve
-3. User Stories - Who will use this and how
-4. Functional Requirements - Detailed features and functionality
-5. Non-Functional Requirements - Performance, security, scalability considerations
-6. Acceptance Criteria - Clear criteria for completion
-7. Out of Scope - What is explicitly not included
-8. Dependencies - Any dependencies or prerequisites
-9. Timeline Considerations - Any time-sensitive aspects
+Include: Overview, Goals, Requirements, Acceptance Criteria.
+Keep it concise (under 500 words).
 
-IMPORTANT: Format the PRD in HTML (not markdown). Use proper HTML tags like:
-- <h1>, <h2>, <h3> for headings
-- <p> for paragraphs
-- <ul>, <ol>, <li> for lists
-- <strong> or <b> for bold text
-- <em> or <i> for italic text
-- <br> for line breaks
-- <div> for sections
-
-Make it comprehensive, clear, and actionable. Use proper HTML structure with good formatting.`;
+IMPORTANT: Output raw HTML only. Do NOT wrap in markdown code blocks. No \`\`\`html tags. Just the HTML content directly.`;
 
     const response = await openai.chat.completions.create({
       model: "gpt-4o-mini",
@@ -80,7 +80,7 @@ Make it comprehensive, clear, and actionable. Use proper HTML structure with goo
         {
           role: "system",
           content:
-            "You are an expert product manager who creates clear, comprehensive, and actionable PRDs. Always format your PRDs in HTML with proper structure, headings, lists, and formatting. Use semantic HTML tags for better readability.",
+            "You create concise PRDs. Output raw HTML only - no markdown, no code blocks, no ```html tags. Just pure HTML content starting with tags like <h1>, <p>, etc.",
         },
         {
           role: "user",
@@ -88,91 +88,53 @@ Make it comprehensive, clear, and actionable. Use proper HTML structure with goo
         },
       ],
       temperature: 0.7,
+      max_tokens: 1000,
     });
 
-    const prdContent = response.choices[0]?.message?.content || "Failed to generate PRD";
-    
-    // Log the PRD content received from OpenAI
-    console.log("=== PRD Generated from OpenAI ===");
-    console.log("PRD Length:", prdContent.length);
-    console.log("PRD Content (first 500 chars):", prdContent.substring(0, 500));
-    console.log("PRD Content (full):", prdContent);
-    console.log("================================");
-    
-    return prdContent;
-  } catch (error) {
-    return `Failed to create PRD: ${
-      error instanceof Error ? error.message : "Unknown error"
-    }`;
-  }
-};
+    let prdContent =
+      response.choices[0]?.message?.content || "Failed to generate PRD";
 
-/**
- * Create a new page in Plane with the PRD content
- * @param planeClient - The Plane client instance
- * @param workspaceSlug - The workspace slug
- * @param projectId - The project ID
- * @param pageName - The name of the page
- * @param prdContent - The PRD content to use as description
- * @returns The created page with its URL
- */
-export const createPage = async (
-  planeClient: PlaneClient,
-  workspaceSlug: string,
-  projectId: string,
-  pageName: string,
-  prdContent: string,
-  appBaseUrl?: string
-): Promise<{ pageId: string; pageUrl: string } | { error: string }> => {
-  try {
-    // Log what we're sending to Plane
-    console.log("=== Creating Page in Plane ===");
-    console.log("Workspace Slug:", workspaceSlug);
-    console.log("Project ID:", projectId);
-    console.log("Page Name:", pageName);
-    console.log("PRD Content Length:", prdContent.length);
-    console.log("PRD Content (first 500 chars):", prdContent.substring(0, 500));
-    console.log("PRD Content (full):", prdContent);
-    console.log("description_html is set:", !!prdContent);
-    console.log("description_html type:", typeof prdContent);
-    console.log("==============================");
-    
+    // Strip markdown code blocks if present
+    prdContent = prdContent
+      .replace(/^```html\s*/i, "")
+      .replace(/^```\s*/i, "")
+      .replace(/\s*```$/i, "")
+      .trim();
+
+    console.log("=== PRD Generated ===");
+    console.log("PRD Length:", prdContent.length);
+
+    // Step 2: Create page with PRD content
+    const pageName = `PRD: ${issueTitle}`;
     const pageData = {
       name: pageName,
       description_html: prdContent,
     };
-    
-    console.log("Page data being sent:", JSON.stringify({
-      name: pageData.name,
-      description_html_length: pageData.description_html?.length || 0,
-      description_html_preview: pageData.description_html?.substring(0, 200) || "",
-    }));
-    
-    const response = await planeClient.pages.createProjectPage(workspaceSlug, projectId, pageData);
-    
-    console.log("Page creation response:", JSON.stringify({
-      id: response?.id,
-      name: response?.name,
-      has_description: !!response?.description_html,
-    }));
 
-    if (response && response.id) {
-      // Construct the page URL
-      // Format: https://app.plane.so/{workspaceSlug}/projects/{projectId}/pages/{pageId}
-      // The baseUrl is typically https://api.plane.so, so we need to convert to app.plane.so
-      const baseUrl = "http://localhost:3000";
-      const pageUrl = `${baseUrl}/${workspaceSlug}/projects/${projectId}/pages/${response.id}`;
-      
+    const pageResponse = await planeClient.pages.createProjectPage(
+      workspaceSlug,
+      projectId,
+      pageData,
+    );
+
+    if (pageResponse && pageResponse.id) {
+      const baseUrl = appBaseUrl || "https://app.plane.so";
+      const pageUrl = `${baseUrl}/${workspaceSlug}/projects/${projectId}/pages/${pageResponse.id}`;
+
+      console.log("=== Page Created ===");
+      console.log("Page URL:", pageUrl);
+
       return {
-        pageId: response.id,
+        pageId: pageResponse.id,
         pageUrl: pageUrl,
+        pageName: pageName,
       };
     } else {
       return { error: "Failed to create page" };
     }
   } catch (error) {
     return {
-      error: `Failed to create page: ${
+      error: `Failed to create PRD and page: ${
         error instanceof Error ? error.message : "Unknown error"
       }`,
     };
@@ -195,13 +157,18 @@ export const attachPageToIssue = async (
   projectId: string,
   issueId: string,
   pageUrl: string,
-  pageName: string
+  pageName: string,
 ): Promise<string> => {
   try {
-    await planeClient.workItems.links.create(workspaceSlug, projectId, issueId, {
-      url: pageUrl,
-      name: pageName,
-    });
+    await planeClient.workItems.links.create(
+      workspaceSlug,
+      projectId,
+      issueId,
+      {
+        url: pageUrl,
+        name: pageName,
+      },
+    );
 
     return `Successfully attached page link to issue. Page URL: ${pageUrl}`;
   } catch (error) {

@@ -69,7 +69,8 @@ Start by getting the issue details.`
   const agentClient = new AgentClient(
     credentials.access_token,
     config.PLANE_BASE_URL,
-    env.OPENAI_API_KEY
+    config.PLANE_BASE_APP_URL,
+    env.OPENAI_API_KEY,
   );
 
   await agentClient.handleUserPrompt(

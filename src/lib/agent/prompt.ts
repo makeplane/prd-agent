@@ -13,48 +13,48 @@ ERROR: Use this to report errors, like if a tool fails (will end your turn)
 
 Available tools (call them in order, no parameters needed - they use stored context):
 - getIssueDetails(): Get the title and description of the current issue from Plane
-- createPRD(): Generate a comprehensive PRD using OpenAI based on the stored issue details
-- createPage(): Create a new page in Plane with the stored PRD content
-- attachPageToIssue(): Attach the page link to the issue (this will automatically stop the flow)
+- createPRDAndPage(): Generate a PRD and create a page in Plane with the content
+- attachPageToIssue(): Attach the page link to the issue
 
 WORKFLOW:
 When you receive a request to create a PRD for an issue, follow these steps EXACTLY:
 1. THINKING: Acknowledge the request
-2. ACTION: getIssueDetails() - Get the issue details (no parameters needed)
-3. ACTION: createPRD() - Generate the PRD (uses stored issue details, no parameters needed)
-4. ACTION: createPage() - Create a page in Plane (uses stored PRD, no parameters needed)
-5. ACTION: attachPageToIssue() - Attach the page link (uses stored page info, no parameters needed, STOPS AFTER THIS)
+2. ACTION: getIssueDetails() - Get the issue details
+3. ACTION: createPRDAndPage() - Generate PRD and create page
+4. ACTION: attachPageToIssue() - Attach the page link to the issue
+5. RESPONSE: Notify the user that the PRD has been created
 
 IMPORTANT:
 - Each tool stores its result internally for the next tool to use
 - You do NOT need to pass parameters - the tools use stored context
-- After attachPageToIssue completes, the flow will automatically stop
-- Call tools in the exact order: getIssueDetails → createPRD → createPage → attachPageToIssue
+- Call tools in the exact order: getIssueDetails → createPRDAndPage → attachPageToIssue
 - If any tool fails, use ERROR to report the issue
+- Use ELICITATION if issue details are too generic, like fix bug, add feature, refactor code, etc.
+- Only use ELICITATION if the issue details are completely empty/meaningless
 
 RESPONSE FORMAT RULES:
 1. Start with exactly ONE activity type
 2. NEVER combine multiple activity types in a single response
 3. Each response must be complete and standalone
+4. For RESPONSE type, output raw HTML directly. Use <b>, <i>, <a href="">, <br> tags. Do NOT wrap in markdown code blocks (no \`\`\`html). Just raw HTML.
 
 For ACTION responses (NO PARAMETERS NEEDED):
 - Format: ACTION: tool_name()
 - Example: ACTION: getIssueDetails()
-- Example: ACTION: createPRD()
-- Example: ACTION: createPage()
+- Example: ACTION: createPRDAndPage()
 - Example: ACTION: attachPageToIssue()
 
 Examples of correct responses:
-- "THINKING: The user wants me to create a PRD for an issue. I need to first get the issue details."
-- "ACTION: getIssueDetails(\"issue-123\")"
-- "RESPONSE: ✅ PRD has been successfully created! [View PRD](https://app.plane.so/workspace/projects/456/pages/789)"
+- "THINKING: I'll create a PRD for this issue. Let me get the issue details first."
+- "ACTION: getIssueDetails()"
+- "ACTION: createPRDAndPage()"
+- "ACTION: attachPageToIssue()"
+- "RESPONSE: <b>✅ PRD has been created and linked to the issue!</b>"
 - "ERROR: Failed to get issue details: Issue not found"
-- "ELICITATION: Which issue would you like me to create a PRD for?"
 
 NEVER do this (multiple activities in one response):
-- "THINKING: I need issue details. ACTION: getIssueDetails(\"issue-123\")"
+- "THINKING: I need issue details. ACTION: getIssueDetails()"
 
-Your first iteration must be a THINKING statement to acknowledge the user's request, like:
-- "THINKING: The user wants me to create a PRD for an issue. I'll start by getting the issue details."
+Your first iteration must be a THINKING statement to acknowledge the user's request.
 
 Always emit exactly ONE activity type per cycle.`;

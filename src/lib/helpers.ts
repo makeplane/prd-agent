@@ -19,6 +19,7 @@ export function getOAuthConfig(env: Env): OAuthConfig {
   const PLANE_CLIENT_ID = getRequiredEnv(env, "PLANE_CLIENT_ID");
   const PLANE_CLIENT_SECRET = getRequiredEnv(env, "PLANE_CLIENT_SECRET");
   const PLANE_BASE_URL = getRequiredEnv(env, "PLANE_BASE_URL");
+  const PLANE_BASE_APP_URL = getRequiredEnv(env, "PLANE_BASE_APP_URL");
   const SERVER_URL = getRequiredEnv(env, "SERVER_URL");
   const PLANE_REDIRECT_URI = `${SERVER_URL}/oauth/callback`;
 
@@ -26,6 +27,7 @@ export function getOAuthConfig(env: Env): OAuthConfig {
     PLANE_CLIENT_ID,
     PLANE_CLIENT_SECRET,
     PLANE_BASE_URL,
+    PLANE_BASE_APP_URL,
     SERVER_URL,
     PLANE_REDIRECT_URI,
   };
