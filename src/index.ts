@@ -78,7 +78,7 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
         workspace_id: credentials.workspace_id,
         workspace_slug: credentials.workspace_slug,
         app_installation_id: credentials.app_installation_id,
-        plane_base_url: config.PLANE_BASE_URL,
+        plane_base_url: config.PLANE_BASE_APP_URL,
       });
 
       return new Response(htmlResponse, {
