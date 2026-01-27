@@ -41,7 +41,7 @@ The bot uses a simple agentic loop:
 ### 1. Clone and Install
 
 ```bash
-cd chat-prd-agent
+cd prd-agent
 npm install
 ```
 
@@ -175,7 +175,7 @@ npm run deploy
 ## Project Structure
 
 ```
-chat-prd-agent/
+prd-agent/
 ├── src/
 │   ├── index.ts              # Main entry point and routing
 │   └── lib/
