@@ -1,80 +1,104 @@
-# PRD Agent for Plane
+# PRD Agent — Example Plane Agent
 
-A Cloudflare Worker-based PRD (Product Requirements Document) generator that integrates with Plane. Users can mention the bot in issue comments to automatically generate comprehensive PRDs and create linked pages.
+An example [Plane Agent](https://developers.plane.so/dev-tools/agents/overview) built as a Cloudflare Worker. When mentioned in a work item comment, it generates a PRD (Product Requirements Document) using OpenAI and links it back to the issue as a Plane page.
 
-## Features
+Use this project as a reference for building your own Plane agents.
 
-- 📄 Automatic PRD generation from Plane issues
-- 🤖 AI-powered PRD creation using OpenAI
-- 🔗 Automatic page creation with PRD content
-- 🔗 Automatic linking of PRD pages to issues
-- 🎨 HTML-formatted PRDs for better readability
-- 🔄 Multi-step reasoning using OpenAI
-- 🔐 OAuth integration with Plane
+## How It Works
 
-## Architecture
+Plane Agents are AI-powered apps that users can `@mention` in work item comments. Each mention triggers an **Agent Run** — a tracked interaction session where the agent can think, act, and respond.
 
-The bot uses a simple agentic loop:
-1. Receives webhook events when users mention the bot in an issue comment
-2. Retrieves issue details (title and description)
-3. Generates a comprehensive PRD using OpenAI
-4. Creates a new page in Plane with the PRD content
-5. Links the page to the original issue
-6. Responds with a success message and page link
+This agent follows a simple tool-chain workflow:
 
-## Available Tools
+1. **Receive webhook** — Plane sends an `agent_run_activity` event when the agent is mentioned
+2. **Get issue details** — Fetches the work item title and description via the Plane SDK
+3. **Generate PRD** — Sends the issue context to OpenAI to produce a structured PRD
+4. **Create page** — Publishes the PRD as a Plane page in the project
+5. **Link to issue** — Attaches the page URL back to the original work item
 
-- `getIssueDetails()` - Get the title and description of the current issue from Plane
-- `createPRD()` - Generate a comprehensive PRD using OpenAI based on the issue details
-- `createPage()` - Create a new page in Plane with the PRD content as description
-- `attachPageToIssue()` - Attach the page link to the issue (automatically stops the flow)
+The agent communicates progress back to Plane using [Agent Run Activities](https://developers.plane.so/dev-tools/agents/overview):
+
+| Activity Type | Purpose |
+|---------------|---------|
+| `thought` | Shows reasoning (ephemeral, not visible as a comment) |
+| `action` | Indicates tool execution with parameters |
+| `response` | Final answer to the user (creates a comment) |
+| `elicitation` | Asks the user for more information |
+| `error` | Reports failures |
+
+## Project Structure
+
+```
+src/
+├── index.ts                  # Entry point — routes requests (OAuth, webhooks, health)
+└── lib/
+    ├── helpers.ts            # OAuth configuration and API client setup
+    ├── store.ts              # KV storage for workspace credentials
+    ├── templates.ts          # HTML template for OAuth success page
+    ├── types.ts              # TypeScript types (webhook payloads, tool names)
+    ├── webhook-handler.ts    # Webhook processing and token refresh
+    └── agent/
+        ├── agentClient.ts    # Core agent loop — orchestrates LLM calls and tool execution
+        ├── prompt.ts         # System prompt defining agent behavior
+        └── tools.ts          # Tool implementations (Plane API + OpenAI)
+```
+
+### Key Concepts
+
+- **`AgentClient`** (`agentClient.ts`) — Implements a ReAct-style loop. Each LLM response is prefixed with `THINKING:`, `ACTION:`, `RESPONSE:`, `ELICITATION:`, or `ERROR:` to determine the next step. The loop runs until a terminal activity (response/error/elicitation) or max iterations (10).
+
+- **Tools** (`tools.ts`) — Stateless functions called in sequence. Results are stored on the `AgentClient` instance so each tool can access the output of previous tools without parameter passing.
+
+- **Webhook handler** (`webhook-handler.ts`) — Validates events, refreshes expired OAuth tokens, and hands off to the agent client.
 
 ## Setup
 
 ### Prerequisites
 
-- [Node.js](https://nodejs.org/) (v18 or later)
+- [Node.js](https://nodejs.org/) v18+
 - [Cloudflare account](https://dash.cloudflare.com/)
 - [Plane workspace](https://plane.so/)
 - [OpenAI API key](https://platform.openai.com/)
 
-### 1. Clone and Install
+### 1. Clone and install
 
 ```bash
+git clone <repo-url>
 cd prd-agent
 npm install
 ```
 
-### 2. Create KV Namespace
+### 2. Create a KV namespace
 
 ```bash
 wrangler kv namespace create CREDENTIALS_KV
 ```
 
-Update `wrangler.jsonc` with the KV namespace ID.
+Copy the namespace ID into `wrangler.jsonc`.
 
-### 3. Create Plane App
+### 3. Create a Plane App
 
 1. Go to your Plane workspace settings
 2. Navigate to **Apps** > **Create App**
-3. Set the following:
+3. Configure:
    - **App Name**: PRD Agent
-   - **Redirect URL**: `https://your-worker-url/oauth/callback`
-   - **Webhook URL**: `https://your-worker-url/webhook`
+   - **Redirect URL**: `https://<your-worker-url>/oauth/callback`
+   - **Webhook URL**: `https://<your-worker-url>/webhook`
+   - Enable **App Mentions** (this makes it an agent)
    - Enable the `agent_run_user_prompt` webhook event
 4. Note the **Client ID** and **Client Secret**
 
-### 4. Configure Environment
+### 4. Configure environment
 
-Update `wrangler.jsonc`:
+Update `wrangler.jsonc` with your values:
 
-```json
+```jsonc
 {
   "vars": {
-    "PLANE_CLIENT_ID": "your-client-id",
+    "PLANE_CLIENT_ID": "<your-client-id>",
     "PLANE_BASE_URL": "https://api.plane.so",
     "PLANE_BASE_APP_URL": "https://app.plane.so",
-    "SERVER_URL": "https://your-worker-url"
+    "SERVER_URL": "https://<your-worker-url>"
   }
 }
 ```
@@ -92,138 +116,56 @@ wrangler secret put OPENAI_API_KEY
 npm run deploy
 ```
 
-### 6. Install the App
+### 6. Install the app
 
-1. Visit `https://your-worker-url/oauth/setup`
+1. Visit `https://<your-worker-url>/oauth/setup`
 2. Authorize the app for your workspace
-3. The bot is now ready to use!
+3. The agent is now ready to use
 
 ## Usage
 
-Mention the bot in any issue comment:
+Mention the agent in any work item comment:
 
 ```
 @PRDAgent create a PRD for this issue
 ```
 
-Or simply mention the bot:
+The agent will generate a PRD, create a page, and link it to the issue.
 
+## Development
+
+```bash
+npm run dev          # Start local dev server (wrangler dev)
+npm run deploy       # Deploy to Cloudflare
+npm run cf-typegen   # Generate TypeScript types for Cloudflare bindings
 ```
-@PRDAgent
-```
-
-The bot will automatically:
-1. Retrieve the issue details (title and description)
-2. Generate a comprehensive PRD using OpenAI
-3. Create a new page in Plane with the PRD content
-4. Link the page to the issue
-5. Respond with a success message and page link
-
-### PRD Structure
-
-The generated PRD includes:
-- **Overview** - A brief summary of the feature/requirement
-- **Goals and Objectives** - What we aim to achieve
-- **User Stories** - Who will use this and how
-- **Functional Requirements** - Detailed features and functionality
-- **Non-Functional Requirements** - Performance, security, scalability considerations
-- **Acceptance Criteria** - Clear criteria for completion
-- **Out of Scope** - What is explicitly not included
-- **Dependencies** - Any dependencies or prerequisites
-- **Timeline Considerations** - Any time-sensitive aspects
-
-PRDs are formatted in HTML for better readability in Plane pages.
 
 ## Environment Variables
 
-| Variable | Description | Required |
-|----------|-------------|----------|
-| `PLANE_CLIENT_ID` | Plane OAuth Client ID | Yes |
-| `PLANE_CLIENT_SECRET` | Plane OAuth Client Secret | Yes |
-| `PLANE_BASE_URL` | Plane API URL (default: https://api.plane.so) | Yes |
-| `PLANE_BASE_APP_URL` | Plane App URL (default: https://app.plane.so) | Yes |
-| `SERVER_URL` | This worker's public URL | Yes |
-| `OPENAI_API_KEY` | OpenAI API key for GPT-4 | Yes |
+| Variable | Type | Description |
+|----------|------|-------------|
+| `PLANE_CLIENT_ID` | var | Plane OAuth Client ID |
+| `PLANE_CLIENT_SECRET` | secret | Plane OAuth Client Secret |
+| `PLANE_BASE_URL` | var | Plane API base URL |
+| `PLANE_BASE_APP_URL` | var | Plane app base URL |
+| `SERVER_URL` | var | This worker's public URL |
+| `OPENAI_API_KEY` | secret | OpenAI API key |
 
 ## API Endpoints
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/` | GET | Health check message |
-| `/health` | GET | Health status JSON |
-| `/oauth/setup` | GET | Start OAuth flow |
+| `/` | GET | Root greeting |
+| `/health` | GET | Health check |
+| `/oauth/setup` | GET | Start OAuth installation flow |
 | `/oauth/callback` | GET | OAuth callback handler |
 | `/webhook` | POST | Plane webhook receiver |
-| `/workspaces` | GET | List connected workspaces |
 
-## Development
+## Learn More
 
-```bash
-# Start local development server
-npm run dev
-
-# Generate TypeScript types for Cloudflare bindings
-npm run cf-typegen
-
-# Lint the code
-npm run lint
-
-# Deploy to Cloudflare
-npm run deploy
-```
-
-## Project Structure
-
-```
-prd-agent/
-├── src/
-│   ├── index.ts              # Main entry point and routing
-│   └── lib/
-│       ├── helpers.ts        # OAuth helpers and utilities
-│       ├── store.ts          # KV storage for credentials
-│       ├── templates.ts      # HTML templates
-│       ├── types.ts          # TypeScript type definitions
-│       ├── webhook-handler.ts # Webhook processing
-│       └── agent/
-│           ├── agentClient.ts # Agent logic and Plane API
-│           ├── prompt.ts      # LLM system prompt
-│           └── tools.ts        # PRD generation and page tools
-├── wrangler.jsonc            # Cloudflare configuration
-├── package.json
-├── tsconfig.json
-└── README.md
-```
-
-## Webhook Events
-
-The bot listens for `agent_run_user_prompt` events, which are triggered when a user mentions the bot in an issue comment. The webhook payload includes:
-
-- `agent_run` - The agent run context
-- `agent_run_activity` - The user's prompt activity
-- `workspace_id` - The workspace identifier
-- `project_id` - The project identifier
-- `issue_id` - The issue identifier
-
-## Agent Activity Types
-
-The bot creates various activity types in Plane:
-
-- `thought` - Shows the bot's reasoning process
-- `action` - Indicates tool execution with parameters
-- `response` - Final answer to the user with page link
-- `elicitation` - Request for more information
-- `error` - Error messages
-
-## Workflow
-
-When the bot is mentioned in an issue comment, it follows this workflow:
-
-1. **getIssueDetails()** - Retrieves the issue title and description
-2. **createPRD()** - Generates a comprehensive PRD using OpenAI based on the issue
-3. **createPage()** - Creates a new page in Plane with the PRD content (HTML formatted)
-4. **attachPageToIssue()** - Links the page to the issue and stops the flow
-
-All intermediate results are stored internally, so tools don't require parameters. The bot automatically uses stored context between steps.
+- [Plane Agents documentation](https://developers.plane.so/dev-tools/agents/overview)
+- [Plane Node SDK](https://www.npmjs.com/package/@makeplane/plane-node-sdk)
+- [Cloudflare Workers](https://developers.cloudflare.com/workers/)
 
 ## License
 
