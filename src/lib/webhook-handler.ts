@@ -17,18 +17,8 @@ export async function handleAgentRunUserPromptWebhook(
   config: OAuthConfig,
   env: Env
 ): Promise<void> {
-  console.log("Processing agent_run_user_prompt webhook:", {
-    agent_run_id: webhook.agent_run.id,
-    workspace_id: webhook.workspace_id,
-    project_id: webhook.project_id,
-    issue_id: webhook.issue_id,
-  });
-
   // Check if token is expired and refresh if needed
   if (credentials.expires_at <= Date.now() / 1000) {
-    console.log(
-      `Token expired for workspace ${webhook.workspace_id}, refreshing token`
-    );
     const oauthApi = createOAuthApi(config);
     const tokenResponse = await oauthApi.getBotToken(
       credentials.app_installation_id
@@ -93,11 +83,7 @@ export async function handleWebhook(
   config: OAuthConfig,
   env: Env
 ): Promise<void> {
-  console.log("Handling webhook event:", event);
-
   if (event === "agent_run_user_prompt") {
     await handleAgentRunUserPromptWebhook(data, credentials, config, env);
-  } else {
-    console.log(`Unhandled event type: ${event}`);
   }
 }

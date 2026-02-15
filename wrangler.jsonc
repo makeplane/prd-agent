@@ -7,17 +7,19 @@
   "kv_namespaces": [
     {
       "binding": "CREDENTIALS_KV",
-      "id": "4d2bc20c3f0b4fdea30c37d333362dd6",
-      "preview_id": "11548798a3ec4106ac457f4104b90d31",
+      // Replace with your KV namespace IDs from `wrangler kv namespace create CREDENTIALS_KV`
+      "id": "<YOUR_KV_NAMESPACE_ID>",
+      "preview_id": "<YOUR_KV_PREVIEW_NAMESPACE_ID>",
     },
   ],
   "observability": {
     "enabled": true,
   },
   "vars": {
-    "PLANE_CLIENT_ID": "bQZg2vvN8uHBjd8rLS2DK4Erv5w00My9JkQi9apC",
-    "PLANE_BASE_URL": "https://api.uat.plane.town",
-    "SERVER_URL": "https://prd-agent.weather-random-123.workers.dev",
-    "PLANE_BASE_APP_URL": "https://uat.plane.town",
+    // Set these to match your Plane instance
+    "PLANE_CLIENT_ID": "<YOUR_PLANE_CLIENT_ID>",
+    "PLANE_BASE_URL": "https://api.plane.so",
+    "SERVER_URL": "https://<YOUR_WORKER_NAME>.<YOUR_SUBDOMAIN>.workers.dev",
+    "PLANE_BASE_APP_URL": "https://app.plane.so",
   },
 }

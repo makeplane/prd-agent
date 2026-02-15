@@ -101,9 +101,6 @@ IMPORTANT: Output raw HTML only. Do NOT wrap in markdown code blocks. No \`\`\`h
       .replace(/\s*```$/i, "")
       .trim();
 
-    console.log("=== PRD Generated ===");
-    console.log("PRD Length:", prdContent.length);
-
     // Step 2: Create page with PRD content
     const pageName = `PRD: ${issueTitle}`;
     const pageData = {
@@ -120,9 +117,6 @@ IMPORTANT: Output raw HTML only. Do NOT wrap in markdown code blocks. No \`\`\`h
     if (pageResponse && pageResponse.id) {
       const baseUrl = appBaseUrl || "https://app.plane.so";
       const pageUrl = `${baseUrl}/${workspaceSlug}/projects/${projectId}/pages/${pageResponse.id}`;
-
-      console.log("=== Page Created ===");
-      console.log("Page URL:", pageUrl);
 
       return {
         pageId: pageResponse.id,

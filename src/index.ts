@@ -1,9 +1,5 @@
 import { getOAuthConfig, createOAuthApi } from "./lib/helpers";
-import {
-  saveCredentials,
-  getCredentialsForWorkspace,
-  listWorkspaces,
-} from "./lib/store";
+import { saveCredentials, getCredentialsForWorkspace } from "./lib/store";
 import { handleWebhook } from "./lib/webhook-handler";
 import { getOAuthSuccessTemplate } from "./lib/templates";
 import { StoredCredentials, AgentRunUserPromptWebhook } from "./lib/types";
@@ -15,8 +11,6 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
   const url = new URL(request.url);
   const path = url.pathname;
   const method = request.method;
-
-  console.log(`${method} ${path}`);
 
   try {
     // Root endpoint
@@ -89,7 +83,10 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
     // Webhook processing endpoint
     if (path === "/webhook" && method === "POST") {
       if (!env.OPENAI_API_KEY) {
-        return new Response("OpenAI API key not configured", { status: 500 });
+        return new Response(
+          JSON.stringify({ error: "Server configuration error" }),
+          { status: 500, headers: { "Content-Type": "application/json" } },
+        );
       }
 
       const webhook = (await request.json()) as {
@@ -98,17 +95,9 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
         data?: AgentRunUserPromptWebhook;
       };
 
-      console.log("Received webhook:", {
-        event: webhook.event,
-        workspace_id: webhook.workspace_id,
-        type: webhook.data?.type,
-      });
-
-      // Check if this is an agent_run_user_prompt webhook
       const webhookData = webhook.data as unknown as AgentRunUserPromptWebhook;
 
       if (webhookData.type !== "agent_run_activity") {
-        console.log("Not an agent_run_activity webhook, skipping");
         return new Response(
           JSON.stringify({ message: "Webhook type not handled" }),
           { headers: { "Content-Type": "application/json" } },
@@ -122,9 +111,7 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
         });
       }
 
-      // Get stored credentials for this workspace
       const storedCreds = await getCredentialsForWorkspace(env, workspaceId);
-      console.log("Stored credentials:", storedCreds);
       if (!storedCreds) {
         return new Response(
           `No credentials found for workspace ${workspaceId}`,
@@ -132,7 +119,6 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
         );
       }
 
-      // Process the webhook
       const config = getOAuthConfig(env);
       await handleWebhook(
         "agent_run_user_prompt",
@@ -143,12 +129,8 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
       );
 
       return new Response(
-        JSON.stringify({
-          message: "Webhook processed successfully",
-        }),
-        {
-          headers: { "Content-Type": "application/json" },
-        },
+        JSON.stringify({ message: "Webhook processed successfully" }),
+        { headers: { "Content-Type": "application/json" } },
       );
     }
 
@@ -165,29 +147,12 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
       );
     }
 
-    // List workspaces endpoint (for debugging)
-    if (path === "/workspaces" && method === "GET") {
-      const workspaces = await listWorkspaces(env);
-
-      return new Response(
-        JSON.stringify({
-          workspaces,
-        }),
-        {
-          headers: { "Content-Type": "application/json" },
-        },
-      );
-    }
-
     // Default response for unmatched routes
     return new Response("Not Found", { status: 404 });
   } catch (error) {
     console.error("Error processing request:", error);
     return new Response(
-      JSON.stringify({
-        error: "Internal Server Error",
-        message: error instanceof Error ? error.message : "Unknown error",
-      }),
+      JSON.stringify({ error: "Internal Server Error" }),
       {
         status: 500,
         headers: { "Content-Type": "application/json" },

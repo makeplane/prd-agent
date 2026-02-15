@@ -236,19 +236,11 @@ export class AgentClient {
     workspaceSlug: string,
     data: CreateAgentRunActivityRequest,
   ): Promise<void> {
-    console.log("Creating agent activity:", {
-      runId: agentRunId,
-      type: data.type,
-      contentType: data.content.type,
-    });
-
     await this.planeClient.agentRuns.activities.create(
       workspaceSlug,
       agentRunId,
       data,
     );
-
-    console.log("Agent activity created successfully");
   }
 
   /**
@@ -411,7 +403,6 @@ export class AgentClient {
           throw new Error("Project ID is required for getIssueDetails");
         }
 
-        console.log("Getting issue details for:", issueId);
         const result = await getIssueDetails(
           this.planeClient,
           workspaceSlug,
@@ -422,10 +413,6 @@ export class AgentClient {
         // Store the result for later use
         if (!("error" in result)) {
           this.issueDetails = result;
-          console.log("Issue details stored:", {
-            title: result.title,
-            descriptionLength: result.description.length,
-          });
         }
 
         return JSON.stringify(result);
@@ -440,7 +427,6 @@ export class AgentClient {
           );
         }
 
-        console.log("Creating PRD and page for issue:", this.issueDetails.title);
         const result = await createPRDAndPage(
           this.openai,
           this.planeClient,
@@ -459,7 +445,6 @@ export class AgentClient {
             pageUrl: result.pageUrl,
             pageName: result.pageName,
           };
-          console.log("PRD and page created:", result.pageUrl);
           return `PRD created and page published. Page URL: ${result.pageUrl}`;
         }
 
@@ -477,7 +462,6 @@ export class AgentClient {
           );
         }
 
-        console.log("Attaching page to issue:", this.pageInfo.pageUrl);
         const result = await attachPageToIssue(
           this.planeClient,
           workspaceSlug,
@@ -486,7 +470,6 @@ export class AgentClient {
           this.pageInfo.pageUrl,
           this.pageInfo.pageName,
         );
-        console.log("Page attached, stopping flow");
         return result;
       }
       default:

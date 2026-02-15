@@ -1,7 +1,7 @@
 import { StoredCredentials } from "./types";
 
 /**
- * Storage utilities for Weather Bot Cloudflare Worker
+ * Storage utilities for PRD Agent Cloudflare Worker
  *
  * This module handles credential storage and retrieval using Cloudflare KV
  */
@@ -62,17 +62,4 @@ export async function getCredentialsByAppInstallation(
   return stored ? (JSON.parse(stored) as StoredCredentials) : null;
 }
 
-/**
- * List all workspaces with stored credentials
- */
-export async function listWorkspaces(env: Env): Promise<string[]> {
-  if (!env.CREDENTIALS_KV) {
-    throw new Error("CREDENTIALS_KV binding not configured");
-  }
-
-  const list = await env.CREDENTIALS_KV.list({ prefix: "workspace:" });
-  return list.keys.map((key: { name: string }) =>
-    key.name.replace("workspace:", "")
-  );
-}
 
